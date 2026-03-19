@@ -10,6 +10,27 @@
 
 ## 사용법
 
+원라인 설치:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaekanglee/raven_installer/main/install.sh | bash
+```
+
+setup까지 같이:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaekanglee/raven_installer/main/install.sh | bash -s -- --setup
+```
+
+격리 테스트:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaekanglee/raven_installer/main/install.sh | \
+  RAVEN_HOME=/tmp/raven-test-home RAVEN_APP_DIR=/tmp/raven-test-home bash
+```
+
+또는 레포를 받아서 실행:
+
 ```bash
 git clone <installer-repo> RavenInstaller
 cd RavenInstaller

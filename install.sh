@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${BASH_SOURCE[0]:-}" ]] && [[ -e "${BASH_SOURCE[0]}" ]]; then
+  ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+  ROOT_DIR="$(pwd)"
+fi
 APP_REPO_URL="${RAVEN_APP_REPO_URL:-}"
 APP_BRANCH="${RAVEN_APP_BRANCH:-main}"
 RELEASE_REPO="${RAVEN_RELEASE_REPO:-jaekanglee/raven_installer}"
