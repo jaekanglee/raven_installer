@@ -4,8 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_REPO_URL="${RAVEN_APP_REPO_URL:-}"
 APP_BRANCH="${RAVEN_APP_BRANCH:-main}"
-RELEASE_REPO="${RAVEN_RELEASE_REPO:-jaekanglee/raven_core}"
+RELEASE_REPO="${RAVEN_RELEASE_REPO:-jaekanglee/raven_installer}"
 RELEASE_TAG="${RAVEN_RELEASE_TAG:-v1.0.0}"
+RELEASE_ASSET_NAME="${RAVEN_RELEASE_ASSET_NAME:-raven_core-v1.0.0.tar.gz}"
 RAVEN_HOME="${RAVEN_HOME:-$HOME/.Raven}"
 APP_DIR="${RAVEN_APP_DIR:-$RAVEN_HOME}"
 INSTALL_SOURCE="${RAVEN_INSTALL_SOURCE:-release}"
@@ -62,44 +63,19 @@ need_cmd() {
 }
 
 need_cmd bash
-need_cmd tar
 need_cmd curl
+need_cmd tar
 
-resolve_github_token() {
-  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-    printf '%s' "$GITHUB_TOKEN"
-    return 0
-  fi
-
-  if command -v gh >/dev/null 2>&1; then
-    gh auth token 2>/dev/null || true
-    return 0
-  fi
-
-  return 0
-}
-
-download_release_archive() {
+download_release_asset() {
   local repo="$1"
   local tag="$2"
-  local output="$3"
-  local url="https://api.github.com/repos/${repo}/tarball/${tag}"
-  local token
-
-  token="$(resolve_github_token)"
-
-  if [[ -n "$token" ]]; then
-    curl --fail --location \
-      -H "Authorization: Bearer ${token}" \
-      -H "Accept: application/vnd.github+json" \
-      "$url" \
-      -o "$output"
-    return
-  fi
+  local asset_name="$3"
+  local output="$4"
+  local url="https://github.com/${repo}/releases/download/${tag}/${asset_name}"
 
   if ! curl --fail --location "$url" -o "$output"; then
-    echo "Error: failed to download release archive." >&2
-    echo "If ${repo} is private, set GITHUB_TOKEN or login with gh auth login." >&2
+    echo "Error: failed to download release asset ${asset_name}." >&2
+    echo "Expected public release: ${repo} ${tag}" >&2
     exit 1
   fi
 }
@@ -107,14 +83,15 @@ download_release_archive() {
 install_from_release() {
   local repo="$1"
   local tag="$2"
+  local asset_name="$3"
   local tmp_dir
   local archive
 
   tmp_dir="$(mktemp -d)"
   archive="${tmp_dir}/raven.tar.gz"
 
-  echo "Downloading release archive: ${repo}@${tag}"
-  download_release_archive "$repo" "$tag" "$archive"
+  echo "Downloading release asset: ${repo}@${tag}/${asset_name}"
+  download_release_asset "$repo" "$tag" "$asset_name" "$archive"
 
   rm -rf "$APP_DIR"
   mkdir -p "$APP_DIR"
@@ -158,7 +135,8 @@ else
   if [[ "$INSTALL_SOURCE" == "release" ]]; then
     echo "release repo: $RELEASE_REPO"
     echo "release tag: $RELEASE_TAG"
-    install_from_release "$RELEASE_REPO" "$RELEASE_TAG"
+    echo "release asset: $RELEASE_ASSET_NAME"
+    install_from_release "$RELEASE_REPO" "$RELEASE_TAG" "$RELEASE_ASSET_NAME"
   else
     if [[ -z "$APP_REPO_URL" ]]; then
       echo "Error: RAVEN_APP_REPO_URL is required when --source git is used." >&2
