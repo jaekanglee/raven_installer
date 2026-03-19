@@ -88,6 +88,7 @@ install_from_release() {
   local repo="$1"
   local tag="$2"
   local asset_name="$3"
+  local replace_existing="${4:-1}"
   local tmp_dir
   local archive
 
@@ -97,8 +98,11 @@ install_from_release() {
   echo "Downloading release asset: ${repo}@${tag}/${asset_name}"
   download_release_asset "$repo" "$tag" "$asset_name" "$archive"
 
-  rm -rf "$APP_DIR"
   mkdir -p "$APP_DIR"
+  if [[ "$replace_existing" -eq 1 ]]; then
+    rm -rf "$APP_DIR"
+    mkdir -p "$APP_DIR"
+  fi
   tar -xzf "$archive" --strip-components=1 -C "$APP_DIR"
   rm -rf "$tmp_dir"
 }
@@ -133,23 +137,31 @@ echo "installer root: $ROOT_DIR"
 echo "install source: $INSTALL_SOURCE"
 echo "app dir: $APP_DIR"
 
-if [[ -d "$APP_DIR/.git" && "$FORCE_REFRESH" -eq 0 ]]; then
-  echo "Existing checkout detected. Use --refresh to reinstall."
-else
-  if [[ "$INSTALL_SOURCE" == "release" ]]; then
-    echo "release repo: $RELEASE_REPO"
-    echo "release tag: $RELEASE_TAG"
-    echo "release asset: $RELEASE_ASSET_NAME"
-    install_from_release "$RELEASE_REPO" "$RELEASE_TAG" "$RELEASE_ASSET_NAME"
+if [[ "$INSTALL_SOURCE" == "release" ]]; then
+  echo "release repo: $RELEASE_REPO"
+  echo "release tag: $RELEASE_TAG"
+  echo "release asset: $RELEASE_ASSET_NAME"
+  if [[ -e "$APP_DIR/install.sh" && "$FORCE_REFRESH" -eq 0 ]]; then
+    echo "Existing Raven core detected. Updating in place while preserving runtime data."
+    install_from_release "$RELEASE_REPO" "$RELEASE_TAG" "$RELEASE_ASSET_NAME" 0
+  elif [[ -d "$APP_DIR" && "$FORCE_REFRESH" -eq 0 ]]; then
+    echo "Existing Raven runtime detected. Installing core files into the current runtime directory."
+    install_from_release "$RELEASE_REPO" "$RELEASE_TAG" "$RELEASE_ASSET_NAME" 0
   else
-    if [[ -z "$APP_REPO_URL" ]]; then
-      echo "Error: RAVEN_APP_REPO_URL is required when --source git is used." >&2
-      exit 1
-    fi
-    echo "app repo: $APP_REPO_URL"
-    echo "app branch: $APP_BRANCH"
-    install_from_git "$APP_REPO_URL" "$APP_BRANCH"
+    install_from_release "$RELEASE_REPO" "$RELEASE_TAG" "$RELEASE_ASSET_NAME" 1
   fi
+else
+  if [[ -d "$APP_DIR" && "$FORCE_REFRESH" -eq 0 ]]; then
+    echo "Existing app directory detected for git install. Use --refresh to replace it." >&2
+    exit 1
+  fi
+  if [[ -z "$APP_REPO_URL" ]]; then
+    echo "Error: RAVEN_APP_REPO_URL is required when --source git is used." >&2
+    exit 1
+  fi
+  echo "app repo: $APP_REPO_URL"
+  echo "app branch: $APP_BRANCH"
+  install_from_git "$APP_REPO_URL" "$APP_BRANCH"
 fi
 
 cd "$APP_DIR"
