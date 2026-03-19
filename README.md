@@ -22,6 +22,10 @@ setup까지 같이:
 curl -fsSL https://raw.githubusercontent.com/jaekanglee/raven_installer/main/install.sh | bash -s -- --setup
 ```
 
+주의:
+- `curl | bash`처럼 non-interactive 파이프 설치에서는 `--setup`이 자동으로 skip될 수 있습니다.
+- 이 경우 설치 후 터미널에서 `raven setup`을 따로 실행하면 됩니다.
+
 격리 테스트:
 
 ```bash

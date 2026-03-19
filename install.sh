@@ -29,6 +29,7 @@ USAGE
 
 RUN_SETUP=0
 FORCE_REFRESH=0
+NON_TTY_SETUP_WARNED=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --setup)
@@ -169,6 +170,12 @@ cd "$APP_DIR"
 if [[ -x "./install.sh" ]]; then
   echo "== Running app installer =="
   if [[ "$RUN_SETUP" -eq 1 ]]; then
+    if [[ ! -t 0 || ! -t 1 ]]; then
+      NON_TTY_SETUP_WARNED=1
+      echo "Notice: --setup was requested from a non-interactive shell."
+      echo "The app installer will skip the interactive wizard and finish installation first."
+      echo "Run 'raven setup' afterwards from your terminal."
+    fi
     bash ./install.sh --setup
   else
     bash ./install.sh
@@ -176,4 +183,13 @@ if [[ -x "./install.sh" ]]; then
 else
   echo "Error: app installer not found at $APP_DIR/install.sh" >&2
   exit 1
+fi
+
+if [[ "$NON_TTY_SETUP_WARNED" -eq 1 ]]; then
+  cat <<'NEXT'
+
+Interactive setup was skipped because no TTY was available.
+Run this next from your shell:
+  raven setup
+NEXT
 fi
