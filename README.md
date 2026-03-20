@@ -41,7 +41,7 @@ cd RavenInstaller
 ./install.sh --setup
 ```
 
-기본값은 `jaekanglee/raven_installer`의 `v1.0.10` release asset `raven_core-v1.0.10.tar.gz` 입니다.
+기본값은 `jaekanglee/raven_installer`의 `v1.0.11` release asset `raven_core-v1.0.11.tar.gz` 입니다.
 
 개발용으로 git 소스 설치도 가능합니다.
 
@@ -55,8 +55,8 @@ RAVEN_APP_REPO_URL=<core-repo-url> \
 
 - `RAVEN_INSTALL_SOURCE`: `release` 또는 `git`, 기본값 `release`
 - `RAVEN_RELEASE_REPO`: release 대상 GitHub repo, 기본값 `jaekanglee/raven_installer`
-- `RAVEN_RELEASE_TAG`: 설치할 release tag, 기본값 `v1.0.10`
-- `RAVEN_RELEASE_ASSET_NAME`: 다운로드할 asset 이름, 기본값 `raven_core-v1.0.10.tar.gz`
+- `RAVEN_RELEASE_TAG`: 설치할 release tag, 기본값 `v1.0.11`
+- `RAVEN_RELEASE_ASSET_NAME`: 다운로드할 asset 이름, 기본값 `raven_core-v1.0.11.tar.gz`
 - `RAVEN_APP_REPO_URL`: git 소스 설치용 앱 레포 URL
 - `RAVEN_APP_BRANCH`: git 소스 설치용 브랜치, 기본값 `main`
 - `RAVEN_HOME`: 설치 대상 경로, 기본값 `~/.Raven`
