@@ -9,8 +9,8 @@ fi
 APP_REPO_URL="${RAVEN_APP_REPO_URL:-}"
 APP_BRANCH="${RAVEN_APP_BRANCH:-main}"
 RELEASE_REPO="${RAVEN_RELEASE_REPO:-jaekanglee/raven_installer}"
-RELEASE_TAG="${RAVEN_RELEASE_TAG:-v1.0.15-r7}"
-RELEASE_ASSET_NAME="${RAVEN_RELEASE_ASSET_NAME:-raven_core-v1.0.15-r7.tar.gz}"
+RELEASE_TAG="${RAVEN_RELEASE_TAG:-}"
+RELEASE_ASSET_NAME="${RAVEN_RELEASE_ASSET_NAME:-}"
 RAVEN_HOME="${RAVEN_HOME:-$HOME/.Raven}"
 APP_DIR="${RAVEN_APP_DIR:-$RAVEN_HOME}"
 INSTALL_SOURCE="${RAVEN_INSTALL_SOURCE:-release}"
@@ -70,6 +70,31 @@ need_cmd() {
 need_cmd bash
 need_cmd curl
 need_cmd tar
+
+resolve_latest_release_meta() {
+  local repo="$1"
+  local api_url="https://api.github.com/repos/${repo}/releases/latest"
+  local body
+  body="$(curl --fail --silent --show-error --location \
+    -H 'Accept: application/vnd.github+json' \
+    -H 'User-Agent: raven-installer' \
+    "$api_url")" || return 1
+
+  local tag
+  local asset
+
+  tag="$(printf '%s' "$body" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  asset="$(printf '%s' "$body" | grep -o 'raven_core-[^"]*\.tar\.gz' | head -n1)"
+
+  if [[ -z "$tag" ]]; then
+    return 1
+  fi
+  if [[ -z "$asset" ]]; then
+    asset="raven_core-${tag}.tar.gz"
+  fi
+
+  printf '%s|%s\n' "$tag" "$asset"
+}
 
 download_release_asset() {
   local repo="$1"
@@ -139,6 +164,27 @@ echo "install source: $INSTALL_SOURCE"
 echo "app dir: $APP_DIR"
 
 if [[ "$INSTALL_SOURCE" == "release" ]]; then
+  if [[ -z "$RELEASE_TAG" || -z "$RELEASE_ASSET_NAME" ]]; then
+    echo "Resolving latest release metadata from ${RELEASE_REPO}..."
+    latest_meta="$(resolve_latest_release_meta "$RELEASE_REPO")" || {
+      echo "Error: failed to resolve latest release from ${RELEASE_REPO}." >&2
+      echo "Set RAVEN_RELEASE_TAG / RAVEN_RELEASE_ASSET_NAME explicitly and retry." >&2
+      exit 1
+    }
+    latest_tag="${latest_meta%%|*}"
+    latest_asset="${latest_meta#*|}"
+    if [[ -z "$RELEASE_TAG" ]]; then
+      RELEASE_TAG="$latest_tag"
+    fi
+    if [[ -z "$RELEASE_ASSET_NAME" ]]; then
+      RELEASE_ASSET_NAME="$latest_asset"
+    fi
+  fi
+
+  if [[ -z "$RELEASE_ASSET_NAME" ]]; then
+    RELEASE_ASSET_NAME="raven_core-${RELEASE_TAG}.tar.gz"
+  fi
+
   echo "release repo: $RELEASE_REPO"
   echo "release tag: $RELEASE_TAG"
   echo "release asset: $RELEASE_ASSET_NAME"
