@@ -16,6 +16,7 @@ APP_DIR="${RAVEN_APP_DIR:-$RAVEN_HOME}"
 INSTALL_SOURCE="${RAVEN_INSTALL_SOURCE:-release}"
 RAVEN_NODE_VERSION="${RAVEN_NODE_VERSION:-v22.15.1}"
 RAVEN_BOOTSTRAP_DIR="${RAVEN_BOOTSTRAP_DIR:-$HOME/.local/share/raven/bootstrap}"
+RAVEN_USE_SYSTEM_NODE="${RAVEN_USE_SYSTEM_NODE:-0}"
 
 usage() {
   cat <<'USAGE'
@@ -74,7 +75,7 @@ install_node_toolchain_portable() {
 }
 
 ensure_node_toolchain() {
-  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+  if [[ "$RAVEN_USE_SYSTEM_NODE" == "1" ]] && command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
     return
   fi
 
@@ -92,7 +93,11 @@ ensure_node_toolchain() {
 print_prereq_behavior() {
   case "$os_name" in
     Linux|Darwin)
-      echo "prereq bootstrap: portable Node auto-install enabled"
+      if [[ "$RAVEN_USE_SYSTEM_NODE" == "1" ]]; then
+        echo "prereq bootstrap: system Node preferred"
+      else
+        echo "prereq bootstrap: portable Node preferred"
+      fi
       ;;
     *)
       echo "prereq bootstrap: manual"

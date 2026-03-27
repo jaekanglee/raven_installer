@@ -68,6 +68,7 @@ RAVEN_APP_REPO_URL=<core-repo-url> \
 - macOS, Linux, WSL을 `uname`으로 판별합니다.
 - `node`/`npm`이 없으면 macOS/Linux에서 공식 Node 배포본을 사용자 홈 아래 bootstrap 디렉터리에 내려받아 사용합니다.
 - 기본 bootstrap 경로는 `~/.local/share/raven/bootstrap`이며, `RAVEN_NODE_VERSION`/`RAVEN_BOOTSTRAP_DIR`로 조정할 수 있습니다.
+- 기본값은 portable Node를 우선 사용하며, 시스템 Node를 강제하려면 `RAVEN_USE_SYSTEM_NODE=1`을 지정합니다.
 - 기본적으로 public GitHub release asset을 내려받은 뒤, 그 안의 `install.sh`를 실행합니다.
 - 필요하면 git clone 방식으로도 설치할 수 있습니다.
 - 이 저장소는 개인화된 런타임 데이터나 사용자 설정을 포함하지 않습니다.
