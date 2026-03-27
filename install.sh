@@ -105,6 +105,45 @@ print_prereq_behavior() {
   esac
 }
 
+ensure_line_in_file() {
+  local file="$1"
+  local line="$2"
+  mkdir -p "$(dirname "$file")"
+  touch "$file"
+  if grep -Fqx "$line" "$file" 2>/dev/null; then
+    return
+  fi
+  printf "\n%s\n" "$line" >> "$file"
+}
+
+ensure_local_bin_path() {
+  local export_line='export PATH="$HOME/.local/bin:$PATH"'
+  local shell_name rc_files=()
+  shell_name="$(basename "${SHELL:-}")"
+  rc_files+=("$HOME/.profile")
+  case "$shell_name" in
+    bash) rc_files+=("$HOME/.bashrc") ;;
+    zsh) rc_files+=("$HOME/.zshrc") ;;
+  esac
+  local seen=()
+  local rc
+  for rc in "${rc_files[@]}"; do
+    local duplicate=0
+    local existing
+    for existing in "${seen[@]}"; do
+      if [[ "$existing" == "$rc" ]]; then
+        duplicate=1
+        break
+      fi
+    done
+    if [[ "$duplicate" -eq 1 ]]; then
+      continue
+    fi
+    seen+=("$rc")
+    ensure_line_in_file "$rc" "$export_line"
+  done
+}
+
 RUN_SETUP=0
 FORCE_REFRESH=0
 NON_TTY_SETUP_WARNED=0
@@ -311,6 +350,8 @@ else
   exit 1
 fi
 
+ensure_local_bin_path
+
 if [[ "$NON_TTY_SETUP_WARNED" -eq 1 ]]; then
   cat <<'NEXT'
 
@@ -318,4 +359,11 @@ Interactive setup was skipped because no TTY was available.
 Run this next from your shell:
   raven setup
 NEXT
+fi
+
+printf '\nPATH updated in shell startup files. Open a new shell or run:\n  source ~/.profile\n'
+if [[ "$(basename "${SHELL:-}")" == "bash" ]]; then
+  printf '  source ~/.bashrc\n'
+elif [[ "$(basename "${SHELL:-}")" == "zsh" ]]; then
+  printf '  source ~/.zshrc\n'
 fi
