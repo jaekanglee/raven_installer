@@ -27,6 +27,99 @@ Options:
 USAGE
 }
 
+run_with_privilege() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+    return
+  fi
+  if command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+    return
+  fi
+  echo "Error: privileged install required but sudo is not available: $*" >&2
+  exit 1
+}
+
+install_node_toolchain_linux() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "Node.js/npm not found. Attempting Linux bootstrap..."
+
+  if command -v apt-get >/dev/null 2>&1; then
+    run_with_privilege apt-get update
+    run_with_privilege apt-get install -y nodejs npm
+  elif command -v dnf >/dev/null 2>&1; then
+    run_with_privilege dnf install -y nodejs npm
+  elif command -v yum >/dev/null 2>&1; then
+    run_with_privilege yum install -y nodejs npm
+  elif command -v apk >/dev/null 2>&1; then
+    run_with_privilege apk add --no-cache nodejs npm
+  else
+    echo "Error: unsupported Linux package manager. Install node and npm manually, then rerun installer." >&2
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    echo "Error: node/npm bootstrap did not complete successfully." >&2
+    exit 1
+  fi
+}
+
+install_node_toolchain_macos() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "Node.js/npm not found. Attempting macOS bootstrap via Homebrew..."
+
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "Error: Homebrew is not installed. Install Homebrew first, then rerun installer." >&2
+    exit 1
+  fi
+
+  brew install node
+
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    echo "Error: node/npm bootstrap via Homebrew did not complete successfully." >&2
+    exit 1
+  fi
+}
+
+ensure_node_toolchain() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return
+  fi
+
+  case "$os_name" in
+    Linux)
+      install_node_toolchain_linux
+      ;;
+    Darwin)
+      install_node_toolchain_macos
+      ;;
+    *)
+      echo "Error: node and npm are required." >&2
+      exit 1
+      ;;
+  esac
+}
+
+print_prereq_behavior() {
+  case "$os_name" in
+    Linux)
+      echo "prereq bootstrap: Linux package manager auto-install enabled"
+      ;;
+    Darwin)
+      echo "prereq bootstrap: Homebrew node auto-install enabled"
+      ;;
+    *)
+      echo "prereq bootstrap: manual"
+      ;;
+  esac
+}
+
 RUN_SETUP=0
 FORCE_REFRESH=0
 NON_TTY_SETUP_WARNED=0
@@ -162,6 +255,7 @@ echo "== Raven Installer =="
 echo "installer root: $ROOT_DIR"
 echo "install source: $INSTALL_SOURCE"
 echo "app dir: $APP_DIR"
+print_prereq_behavior
 
 if [[ "$INSTALL_SOURCE" == "release" ]]; then
   if [[ -z "$RELEASE_TAG" || -z "$RELEASE_ASSET_NAME" ]]; then
@@ -214,6 +308,7 @@ fi
 cd "$APP_DIR"
 
 if [[ -x "./install.sh" ]]; then
+  ensure_node_toolchain
   echo "== Running app installer =="
   if [[ "$RUN_SETUP" -eq 1 ]]; then
     if [[ ! -t 0 || ! -t 1 ]]; then
