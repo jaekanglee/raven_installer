@@ -361,9 +361,4 @@ Run this next from your shell:
 NEXT
 fi
 
-printf '\nPATH updated in shell startup files. Open a new shell or run:\n  source ~/.profile\n'
-if [[ "$(basename "${SHELL:-}")" == "bash" ]]; then
-  printf '  source ~/.bashrc\n'
-elif [[ "$(basename "${SHELL:-}")" == "zsh" ]]; then
-  printf '  source ~/.zshrc\n'
-fi
+printf '\nPATH updated in shell startup files. New terminals will pick it up automatically.\n'
