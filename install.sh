@@ -17,6 +17,7 @@ INSTALL_SOURCE="${RAVEN_INSTALL_SOURCE:-release}"
 RAVEN_NODE_VERSION="${RAVEN_NODE_VERSION:-v22.15.1}"
 RAVEN_BOOTSTRAP_DIR="${RAVEN_BOOTSTRAP_DIR:-$HOME/.local/share/raven/bootstrap}"
 RAVEN_USE_SYSTEM_NODE="${RAVEN_USE_SYSTEM_NODE:-0}"
+RAVEN_ENV_TEMPLATE_OUT="${RAVEN_ENV_TEMPLATE_OUT:-$RAVEN_HOME/ingress-env.template.sh}"
 
 usage() {
   cat <<'USAGE'
@@ -114,6 +115,27 @@ ensure_line_in_file() {
     return
   fi
   printf "\n%s\n" "$line" >> "$file"
+}
+
+write_env_template_from_app() {
+  local out_file="$RAVEN_ENV_TEMPLATE_OUT"
+  mkdir -p "$(dirname "$out_file")"
+
+  if command -v raven >/dev/null 2>&1; then
+    if raven env-template >"$out_file" 2>/dev/null; then
+      echo "Generated ingress env template: $out_file"
+      return
+    fi
+  fi
+
+  if [[ -x "$APP_DIR/bin/raven.js" ]] && command -v node >/dev/null 2>&1; then
+    if node "$APP_DIR/bin/raven.js" env-template >"$out_file" 2>/dev/null; then
+      echo "Generated ingress env template: $out_file"
+      return
+    fi
+  fi
+
+  echo "Notice: could not generate ingress env template automatically." >&2
 }
 
 ensure_local_bin_path() {
@@ -351,6 +373,7 @@ else
 fi
 
 ensure_local_bin_path
+write_env_template_from_app
 
 if [[ "$NON_TTY_SETUP_WARNED" -eq 1 ]]; then
   cat <<'NEXT'

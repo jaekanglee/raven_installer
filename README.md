@@ -74,3 +74,12 @@ RAVEN_APP_REPO_URL=<core-repo-url> \
 - 설치 후 `~/.local/bin/raven` 런처가 생성되고, installer가 PATH 자동 반영까지 수행합니다.
 - 필요하면 git clone 방식으로도 설치할 수 있습니다.
 - 이 저장소는 개인화된 런타임 데이터나 사용자 설정을 포함하지 않습니다.
+
+설치가 완료되면 인그레스 보안 환경변수 템플릿이 기본 경로(`$HOME/.Raven/ingress-env.template.sh`)에 생성됩니다.
+
+경로를 바꾸려면 설치 전에 다음을 지정하세요.
+
+```bash
+RAVEN_ENV_TEMPLATE_OUT="$HOME/.Raven/custom-ingress-env.sh" \
+  ./install.sh
+```
