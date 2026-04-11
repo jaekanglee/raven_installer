@@ -214,6 +214,40 @@ safe_remove_dir() {
   fi
 }
 
+safe_remove_file() {
+  local file="$1"
+  if [[ -f "$file" ]]; then
+    rm -f "$file"
+  fi
+}
+
+looks_like_raven_launcher() {
+  local file="$1"
+  if [[ ! -f "$file" ]]; then
+    return 1
+  fi
+  grep -q 'raven.js' "$file" 2>/dev/null
+}
+
+remove_stale_launchers() {
+  local selected="$1"
+  local candidates=(
+    "$HOME/.local/bin/raven"
+    "$HOME/bin/raven"
+    "/opt/homebrew/bin/raven"
+    "/usr/local/bin/raven"
+  )
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ "$candidate" == "$selected" ]]; then
+      continue
+    fi
+    if looks_like_raven_launcher "$candidate"; then
+      safe_remove_file "$candidate"
+    fi
+  done
+}
+
 write_env_template_from_app() {
   local out_file="$RAVEN_ENV_TEMPLATE_OUT"
   mkdir -p "$(dirname "$out_file")"
@@ -580,6 +614,7 @@ fi
 if ! path_contains_dir "$RAVEN_BIN_DIR"; then
   ensure_launcher_bin_path
 fi
+remove_stale_launchers "$RAVEN_LAUNCHER_PATH"
 write_env_template_from_app
 
 if [[ "$NON_TTY_SETUP_WARNED" -eq 1 ]]; then
