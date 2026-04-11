@@ -18,6 +18,8 @@ RAVEN_NODE_VERSION="${RAVEN_NODE_VERSION:-v22.15.1}"
 RAVEN_BOOTSTRAP_DIR="${RAVEN_BOOTSTRAP_DIR:-$HOME/.local/share/raven/bootstrap}"
 RAVEN_USE_SYSTEM_NODE="${RAVEN_USE_SYSTEM_NODE:-0}"
 RAVEN_ENV_TEMPLATE_OUT="${RAVEN_ENV_TEMPLATE_OUT:-$RAVEN_HOME/ingress-env.template.sh}"
+RAVEN_BIN_DIR="${RAVEN_BIN_DIR:-$HOME/.local/bin}"
+RAVEN_LAUNCHER_PATH="${RAVEN_LAUNCHER_PATH:-$RAVEN_BIN_DIR/raven}"
 
 usage() {
   cat <<'USAGE'
@@ -27,6 +29,7 @@ Options:
   --setup       Run the app setup wizard after cloning
   --refresh     Reinstall if the app directory already exists
   --source <s>  Install source: release|git
+  --uninstall   Remove Raven launcher, PATH setup, app files, and bootstrap files
   -h, --help    Show this help
 USAGE
 }
@@ -117,6 +120,29 @@ ensure_line_in_file() {
   printf "\n%s\n" "$line" >> "$file"
 }
 
+remove_line_from_file() {
+  local file="$1"
+  local line="$2"
+  if [[ ! -f "$file" ]]; then
+    return
+  fi
+  local tmp_file
+  tmp_file="$(mktemp)"
+  awk -v target="$line" '$0 != target { print }' "$file" > "$tmp_file"
+  mv "$tmp_file" "$file"
+}
+
+safe_remove_dir() {
+  local dir="$1"
+  if [[ -z "$dir" || "$dir" == "/" ]]; then
+    echo "Error: refusing to remove unsafe directory: ${dir}" >&2
+    exit 1
+  fi
+  if [[ -e "$dir" ]]; then
+    rm -rf "$dir"
+  fi
+}
+
 write_env_template_from_app() {
   local out_file="$RAVEN_ENV_TEMPLATE_OUT"
   mkdir -p "$(dirname "$out_file")"
@@ -140,24 +166,21 @@ write_env_template_from_app() {
 
 ensure_local_bin_path() {
   local export_line='export PATH="$HOME/.local/bin:$PATH"'
-  local shell_name rc_files=()
-  shell_name="$(basename "${SHELL:-}")"
-  rc_files+=("$HOME/.profile")
-  case "$shell_name" in
-    bash) rc_files+=("$HOME/.bashrc") ;;
-    zsh) rc_files+=("$HOME/.zshrc") ;;
-  esac
+  local rc_files=()
+  rc_files+=("$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc")
   local seen=()
   local rc
   for rc in "${rc_files[@]}"; do
     local duplicate=0
     local existing
-    for existing in "${seen[@]}"; do
-      if [[ "$existing" == "$rc" ]]; then
-        duplicate=1
-        break
-      fi
-    done
+    if (( ${#seen[@]} > 0 )); then
+      for existing in "${seen[@]}"; do
+        if [[ "$existing" == "$rc" ]]; then
+          duplicate=1
+          break
+        fi
+      done
+    fi
     if [[ "$duplicate" -eq 1 ]]; then
       continue
     fi
@@ -166,8 +189,59 @@ ensure_local_bin_path() {
   done
 }
 
+remove_local_bin_path() {
+  local export_line='export PATH="$HOME/.local/bin:$PATH"'
+  local rc_files=()
+  rc_files+=("$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc")
+  local seen=()
+  local rc
+  for rc in "${rc_files[@]}"; do
+    local duplicate=0
+    local existing
+    if (( ${#seen[@]} > 0 )); then
+      for existing in "${seen[@]}"; do
+        if [[ "$existing" == "$rc" ]]; then
+          duplicate=1
+          break
+        fi
+      done
+    fi
+    if [[ "$duplicate" -eq 1 ]]; then
+      continue
+    fi
+    seen+=("$rc")
+    remove_line_from_file "$rc" "$export_line"
+  done
+}
+
+perform_uninstall() {
+  echo "== Raven Uninstall =="
+  echo "app dir: $APP_DIR"
+  echo "launcher: $RAVEN_LAUNCHER_PATH"
+  echo "bootstrap dir: $RAVEN_BOOTSTRAP_DIR"
+
+  remove_local_bin_path
+
+  if [[ -f "$RAVEN_LAUNCHER_PATH" ]]; then
+    rm -f "$RAVEN_LAUNCHER_PATH"
+  fi
+
+  if [[ -f "$RAVEN_ENV_TEMPLATE_OUT" ]]; then
+    rm -f "$RAVEN_ENV_TEMPLATE_OUT"
+  fi
+
+  safe_remove_dir "$APP_DIR"
+
+  if [[ "$RAVEN_USE_SYSTEM_NODE" != "1" ]]; then
+    safe_remove_dir "$RAVEN_BOOTSTRAP_DIR"
+  fi
+
+  printf '\nRaven uninstall complete. New terminals will no longer include the Raven PATH entry automatically.\n'
+}
+
 RUN_SETUP=0
 FORCE_REFRESH=0
+RUN_UNINSTALL=0
 NON_TTY_SETUP_WARNED=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -186,6 +260,10 @@ while [[ $# -gt 0 ]]; do
       fi
       INSTALL_SOURCE="$2"
       shift 2
+      ;;
+    --uninstall)
+      RUN_UNINSTALL=1
+      shift
       ;;
     -h|--help)
       usage
@@ -210,7 +288,34 @@ need_cmd bash
 need_cmd curl
 need_cmd tar
 
-resolve_latest_release_meta() {
+resolve_latest_release_tag_from_feed() {
+  local repo="$1"
+  local atom_url="https://github.com/${repo}/releases.atom"
+  local body
+  body="$(curl --fail --silent --show-error --location \
+    -H 'User-Agent: raven-installer' \
+    "$atom_url")" || return 1
+
+  local tag
+  tag="$(printf '%s' "$body" | awk '
+    /<entry>/ { in_entry=1 }
+    in_entry && /<title>/ {
+      line=$0
+      sub(/^.*<title>/, "", line)
+      sub(/<\/title>.*$/, "", line)
+      print line
+      exit
+    }
+  ')"
+
+  if [[ -z "$tag" ]]; then
+    return 1
+  fi
+
+  printf '%s\n' "$tag"
+}
+
+resolve_latest_release_meta_via_api() {
   local repo="$1"
   local api_url="https://api.github.com/repos/${repo}/releases/latest"
   local body
@@ -233,6 +338,21 @@ resolve_latest_release_meta() {
   fi
 
   printf '%s|%s\n' "$tag" "$asset"
+}
+
+resolve_latest_release_meta() {
+  local repo="$1"
+  local tag
+  local api_meta
+
+  tag="$(resolve_latest_release_tag_from_feed "$repo")" || tag=""
+  if [[ -n "$tag" ]]; then
+    printf '%s|%s\n' "$tag" "raven_core-${tag}.tar.gz"
+    return 0
+  fi
+
+  api_meta="$(resolve_latest_release_meta_via_api "$repo")" || return 1
+  printf '%s\n' "$api_meta"
 }
 
 download_release_asset() {
@@ -292,6 +412,11 @@ case "$os_name" in
     ;;
 esac
 
+if [[ "$RUN_UNINSTALL" -eq 1 ]]; then
+  perform_uninstall
+  exit 0
+fi
+
 if [[ "$INSTALL_SOURCE" != "release" && "$INSTALL_SOURCE" != "git" ]]; then
   echo "Error: RAVEN_INSTALL_SOURCE must be 'release' or 'git'." >&2
   exit 1
@@ -305,9 +430,9 @@ print_prereq_behavior
 
 if [[ "$INSTALL_SOURCE" == "release" ]]; then
   if [[ -z "$RELEASE_TAG" || -z "$RELEASE_ASSET_NAME" ]]; then
-    echo "Resolving latest release metadata from ${RELEASE_REPO}..."
+    echo "Resolving latest published release tag from ${RELEASE_REPO}..."
     latest_meta="$(resolve_latest_release_meta "$RELEASE_REPO")" || {
-      echo "Error: failed to resolve latest release from ${RELEASE_REPO}." >&2
+      echo "Error: failed to resolve the latest published release tag from ${RELEASE_REPO}." >&2
       echo "Set RAVEN_RELEASE_TAG / RAVEN_RELEASE_ASSET_NAME explicitly and retry." >&2
       exit 1
     }
