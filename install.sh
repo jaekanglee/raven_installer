@@ -18,8 +18,10 @@ RAVEN_NODE_VERSION="${RAVEN_NODE_VERSION:-v22.15.1}"
 RAVEN_BOOTSTRAP_DIR="${RAVEN_BOOTSTRAP_DIR:-$HOME/.local/share/raven/bootstrap}"
 RAVEN_USE_SYSTEM_NODE="${RAVEN_USE_SYSTEM_NODE:-0}"
 RAVEN_ENV_TEMPLATE_OUT="${RAVEN_ENV_TEMPLATE_OUT:-$RAVEN_HOME/ingress-env.template.sh}"
-RAVEN_BIN_DIR="${RAVEN_BIN_DIR:-$HOME/.local/bin}"
-RAVEN_LAUNCHER_PATH="${RAVEN_LAUNCHER_PATH:-$RAVEN_BIN_DIR/raven}"
+RAVEN_BIN_DIR_INPUT="${RAVEN_BIN_DIR:-}"
+RAVEN_LAUNCHER_PATH_INPUT="${RAVEN_LAUNCHER_PATH:-}"
+RAVEN_BIN_DIR="${RAVEN_BIN_DIR_INPUT:-$HOME/.local/bin}"
+RAVEN_LAUNCHER_PATH="${RAVEN_LAUNCHER_PATH_INPUT:-$RAVEN_BIN_DIR/raven}"
 
 usage() {
   cat <<'USAGE'
@@ -120,6 +122,75 @@ ensure_line_in_file() {
   printf "\n%s\n" "$line" >> "$file"
 }
 
+path_contains_dir() {
+  local target="$1"
+  local entry
+  IFS=':' read -r -a path_entries <<< "${PATH:-}"
+  for entry in "${path_entries[@]}"; do
+    if [[ "$entry" == "$target" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+dir_is_writable_or_creatable() {
+  local dir="$1"
+  if [[ -d "$dir" ]]; then
+    [[ -w "$dir" ]]
+    return
+  fi
+
+  local parent
+  parent="$(dirname "$dir")"
+  [[ -d "$parent" && -w "$parent" ]]
+}
+
+build_path_export_line() {
+  local dir="$1"
+  if [[ "$dir" == "$HOME" ]]; then
+    printf '%s\n' 'export PATH="$HOME:$PATH"'
+    return
+  fi
+  if [[ "$dir" == "$HOME/"* ]]; then
+    printf 'export PATH="$HOME/%s:$PATH"\n' "${dir#"$HOME/"}"
+    return
+  fi
+  printf 'export PATH="%s:$PATH"\n' "$dir"
+}
+
+resolve_launcher_location() {
+  if [[ -n "$RAVEN_LAUNCHER_PATH_INPUT" ]]; then
+    RAVEN_LAUNCHER_PATH="$RAVEN_LAUNCHER_PATH_INPUT"
+    RAVEN_BIN_DIR="$(dirname "$RAVEN_LAUNCHER_PATH")"
+    return
+  fi
+
+  if [[ -n "$RAVEN_BIN_DIR_INPUT" ]]; then
+    RAVEN_BIN_DIR="$RAVEN_BIN_DIR_INPUT"
+    RAVEN_LAUNCHER_PATH="${RAVEN_BIN_DIR}/raven"
+    return
+  fi
+
+  local candidates=(
+    "$HOME/.local/bin"
+    "$HOME/bin"
+    "/opt/homebrew/bin"
+    "/usr/local/bin"
+  )
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if path_contains_dir "$candidate" && dir_is_writable_or_creatable "$candidate"; then
+      RAVEN_BIN_DIR="$candidate"
+      RAVEN_LAUNCHER_PATH="${RAVEN_BIN_DIR}/raven"
+      return
+    fi
+  done
+
+  RAVEN_BIN_DIR="$HOME/.local/bin"
+  RAVEN_LAUNCHER_PATH="${RAVEN_BIN_DIR}/raven"
+}
+
 remove_line_from_file() {
   local file="$1"
   local line="$2"
@@ -164,8 +235,9 @@ write_env_template_from_app() {
   echo "Notice: could not generate ingress env template automatically." >&2
 }
 
-ensure_local_bin_path() {
-  local export_line='export PATH="$HOME/.local/bin:$PATH"'
+ensure_launcher_bin_path() {
+  local export_line
+  export_line="$(build_path_export_line "$RAVEN_BIN_DIR")"
   local rc_files=()
   rc_files+=("$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc")
   local seen=()
@@ -189,8 +261,10 @@ ensure_local_bin_path() {
   done
 }
 
-remove_local_bin_path() {
-  local export_line='export PATH="$HOME/.local/bin:$PATH"'
+remove_launcher_bin_path() {
+  local export_line
+  export_line="$(build_path_export_line "$RAVEN_BIN_DIR")"
+  local legacy_export_line='export PATH="$HOME/.local/bin:$PATH"'
   local rc_files=()
   rc_files+=("$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc")
   local seen=()
@@ -211,6 +285,9 @@ remove_local_bin_path() {
     fi
     seen+=("$rc")
     remove_line_from_file "$rc" "$export_line"
+    if [[ "$legacy_export_line" != "$export_line" ]]; then
+      remove_line_from_file "$rc" "$legacy_export_line"
+    fi
   done
 }
 
@@ -220,7 +297,7 @@ perform_uninstall() {
   echo "launcher: $RAVEN_LAUNCHER_PATH"
   echo "bootstrap dir: $RAVEN_BOOTSTRAP_DIR"
 
-  remove_local_bin_path
+  remove_launcher_bin_path
 
   if [[ -f "$RAVEN_LAUNCHER_PATH" ]]; then
     rm -f "$RAVEN_LAUNCHER_PATH"
@@ -427,6 +504,9 @@ echo "installer root: $ROOT_DIR"
 echo "install source: $INSTALL_SOURCE"
 echo "app dir: $APP_DIR"
 print_prereq_behavior
+resolve_launcher_location
+export RAVEN_BIN_DIR
+export RAVEN_LAUNCHER_PATH
 
 if [[ "$INSTALL_SOURCE" == "release" ]]; then
   if [[ -z "$RELEASE_TAG" || -z "$RELEASE_ASSET_NAME" ]]; then
@@ -497,7 +577,9 @@ else
   exit 1
 fi
 
-ensure_local_bin_path
+if ! path_contains_dir "$RAVEN_BIN_DIR"; then
+  ensure_launcher_bin_path
+fi
 write_env_template_from_app
 
 if [[ "$NON_TTY_SETUP_WARNED" -eq 1 ]]; then
@@ -509,4 +591,9 @@ Run this next from your shell:
 NEXT
 fi
 
-printf '\nPATH updated in shell startup files. New terminals will pick it up automatically.\n'
+if path_contains_dir "$RAVEN_BIN_DIR"; then
+  printf '\nLauncher installed into current PATH: %s\n' "$RAVEN_LAUNCHER_PATH"
+  printf 'If this shell still does not resolve `raven`, run: hash -r\n'
+else
+  printf '\nPATH updated in shell startup files. New terminals will pick it up automatically.\n'
+fi

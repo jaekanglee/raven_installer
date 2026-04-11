@@ -72,7 +72,9 @@ RAVEN_APP_REPO_URL=<core-repo-url> \
 - 기본 bootstrap 경로는 `~/.local/share/raven/bootstrap`이며, `RAVEN_NODE_VERSION`/`RAVEN_BOOTSTRAP_DIR`로 조정할 수 있습니다.
 - 기본값은 portable Node를 우선 사용하며, 시스템 Node를 강제하려면 `RAVEN_USE_SYSTEM_NODE=1`을 지정합니다.
 - 기본적으로 public GitHub release feed에서 최신 published release tag를 고른 뒤, 해당 release asset을 내려받아 그 안의 `install.sh`를 실행합니다.
-- 설치 후 `~/.local/bin/raven` 런처가 생성되고, installer가 PATH 자동 반영까지 수행합니다.
+- 설치 후 `raven` 런처가 생성되고, installer가 필요할 때 PATH 자동 반영까지 수행합니다.
+- installer는 현재 `PATH` 안에 이미 포함된 writable bin 디렉터리(예: `/opt/homebrew/bin`, `/usr/local/bin`)를 우선 사용합니다.
+- 그런 경로가 없을 때만 `~/.local/bin/raven`을 만들고, 셸 startup 파일에 PATH 반영을 추가합니다.
 - 필요하면 git clone 방식으로도 설치할 수 있습니다.
 - 이 저장소는 개인화된 런타임 데이터나 사용자 설정을 포함하지 않습니다.
 
